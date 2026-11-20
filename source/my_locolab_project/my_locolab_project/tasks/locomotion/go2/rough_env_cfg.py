@@ -1,0 +1,196 @@
+# Copyright (c) 2022-2026, The Isaac Lab Project Developers.
+# All rights reserved.
+# Original code is licensed under BSD-3-Clause.
+#
+# Copyright (c) 2025-2026, The Loco Lab Project Developers.
+# All rights reserved.
+# Modifications are licensed under BSD-3-Clause.
+
+from isaaclab_physx.sim.spawners.materials import PhysxRigidBodyMaterialCfg
+
+from isaaclab.assets import ArticulationCfg, AssetBaseCfg
+from isaaclab.envs import ManagerBasedRLEnvCfg
+from isaaclab.scene import InteractiveSceneCfg
+from isaaclab.sensors import ContactSensorCfg, RayCasterCfg, patterns
+from isaaclab.utils import configclass
+
+#  from isaaclab.utils.assets import ISAAC_NUCLEUS_DIR
+from locolab.utils.physics import set_self_collisions, set_locomotion_physics
+from locolab.utils.scene import rough_terrain_visual_material_cfg, blue_sky_light_cfg
+from locolab.utils.terrains import TerrainImporterCfg
+
+##
+# Pre-defined configs
+##
+from locolab.tasks.manager_based.locomotion.velocity.config.unitree_go2.mdp_cfg import (  # isort: skip
+    ActionsCfg,
+    CommandsCfg,
+    EventCfg,
+    RoughRewardsCfg,
+    PrivObsCfg,
+    PropObsCfg,
+    RoughCurriculumsCfg,
+    RoughTerminationsCfg,
+)
+from locolab.assets.robots.unitree.Go2.go2 import UNITREE_GO2_CFG  # isort: skip
+from locolab.utils.terrains.terrains_cfg import ROUGH_TERRAINS_CFG  # isort: skip
+from locolab.utils.debug_viz.markers import BLUE_RAY_CASTER_MARKER_CFG  # isort: skip
+
+
+##
+# MDP definition
+##
+@configclass
+class Go2RoughObservationsCfg:
+    """Configuration for Go2 on flat terrain observations"""
+
+    policy: PropObsCfg = PropObsCfg()
+    critic: PrivObsCfg = PrivObsCfg()
+
+    policy.history_length = 5
+
+
+##
+# Scene definition
+##
+@configclass
+class Go2RoughSceneCfg(InteractiveSceneCfg):
+    """Configuration for Go2 on flat terrain scene"""
+
+    # =====  terrain  =====
+    terrain: TerrainImporterCfg = TerrainImporterCfg(
+        prim_path="/World/ground",
+        terrain_type="generator",
+        terrain_generator=ROUGH_TERRAINS_CFG,
+        physics_material=PhysxRigidBodyMaterialCfg(
+            friction_combine_mode="multiply",
+            restitution_combine_mode="multiply",
+            static_friction=1.0,
+            dynamic_friction=1.0,
+        ),
+        visual_material=rough_terrain_visual_material_cfg(),
+        debug_vis=False,
+    )
+
+    # =====  robots  =====
+    robot: ArticulationCfg = UNITREE_GO2_CFG.replace(prim_path="{ENV_REGEX_NS}/Robot")
+
+    # =====  sensors  =====
+    height_scanner: RayCasterCfg = RayCasterCfg(
+        # The assetx-exported USD places the base rigid body directly under Robot.
+        prim_path="{ENV_REGEX_NS}/Robot/base",
+        offset=RayCasterCfg.OffsetCfg(pos=(0.0, 0.0, 20.0)),
+        ray_alignment="yaw",
+        pattern_cfg=patterns.GridPatternCfg(resolution=0.1, size=[1.6, 1.0]),
+        debug_vis=False,
+        mesh_prim_paths=["/World/ground"],
+        global_world_only=True,
+        visualizer_cfg=BLUE_RAY_CASTER_MARKER_CFG,
+    )
+    contact_forces: ContactSensorCfg = ContactSensorCfg(
+        prim_path="{ENV_REGEX_NS}/Robot/.*", history_length=3, track_air_time=True
+    )
+    # for foot in ("FL_foot", "FR_foot", "RL_foot", "RR_foot"):
+    #     locals()[f"{foot}_height_scanner"] = RayCasterCfg(
+    #         prim_path=f"{{ENV_REGEX_NS}}/Robot/{foot}",
+    #         offset=RayCasterCfg.OffsetCfg(pos=(0.0, 0.0, 5.0)),
+    #         ray_alignment="yaw",
+    #         pattern_cfg=patterns.GridPatternCfg(resolution=0.05, size=[0.05, 0.05]),
+    #         debug_vis=True,
+    #         mesh_prim_paths=["/World/ground"],
+    #         global_world_only=True,
+    #         visualizer_cfg=BLUE_RAY_CASTER_MARKER_CFG,
+    #     )
+    # del foot
+
+    # =====  lights  =====
+    sky_light: AssetBaseCfg = blue_sky_light_cfg()
+
+
+##
+# Environment configuration
+##
+@configclass
+class Go2RoughEnvCfg(ManagerBasedRLEnvCfg):
+    """Configuration for the Go2 flat environment."""
+
+    seed: int = 42
+
+    # Scene settings
+    scene: Go2RoughSceneCfg = Go2RoughSceneCfg(num_envs=4096, env_spacing=2.5)
+    # Basic settings
+    observations: Go2RoughObservationsCfg = Go2RoughObservationsCfg()
+    actions: ActionsCfg = ActionsCfg()
+    commands: CommandsCfg = CommandsCfg()
+    # MDP settings
+    rewards: RoughRewardsCfg = RoughRewardsCfg()
+    terminations: RoughTerminationsCfg = RoughTerminationsCfg()
+    events: EventCfg = EventCfg()
+    curriculum: RoughCurriculumsCfg = RoughCurriculumsCfg()
+
+    def __post_init__(self):
+        """Post initialization."""
+        # general settings
+        self.decimation = 4
+        self.episode_length_s = 20.0
+        # simulation settings
+        self.sim.dt = 0.005
+        self.sim.render_interval = self.decimation
+        self.sim.physics_material = self.scene.terrain.physics_material
+        # physics settings
+        set_locomotion_physics(
+            self.sim, rigid_patch_count=2**16,
+            num_substeps=1, cone="elliptic", impratio=10.0, njmax=128, nconmax=24,
+        )
+        # enable self collisions
+        set_self_collisions(self.scene.robot.spawn, True)
+
+        self.scene.terrain.max_init_terrain_level = 0
+
+        # update sensor update periods
+        # we tick all the sensors based on the smallest update period (physics update period)
+        self.scene.contact_forces.update_period = self.sim.dt
+        self.scene.height_scanner.update_period = self.decimation * self.sim.dt
+        # for foot in ("FL_foot", "FR_foot", "RL_foot", "RR_foot"):
+        #     getattr(self.scene, f"{foot}_height_scanner").update_period = self.decimation * self.sim.dt
+
+        # log terrain levels by each terrain type
+        self.curriculum.terrain_levels.params["log_by_terrain_type"] = True
+
+
+@configclass
+class Go2RoughEnvCfg_PLAY(Go2RoughEnvCfg):
+    def __post_init__(self) -> None:
+        # post init of parent
+        super().__post_init__()
+
+        # make a smaller scene for play
+        self.scene.num_envs = 10
+        self.scene.env_spacing = 2.5
+        self.commands.base_velocity.debug_vis = True
+        self.events.push_robot_by_setting_velocity.params["debug_vis"] = True
+        # spawn the robot randomly in the grid (instead of their terrain levels)
+        self.scene.terrain.max_init_terrain_level = None
+        # reduce the number of terrains to save memory
+        if self.scene.terrain.terrain_generator is not None:
+            self.scene.terrain.terrain_generator.num_rows = 5
+            self.scene.terrain.terrain_generator.num_cols = 5
+            self.scene.terrain.terrain_generator.curriculum = False
+
+        # show height scan
+        self.scene.height_scanner.debug_vis = True
+
+        self.curriculum.terrain_levels.params["log_by_terrain_type"] = False
+
+
+@configclass
+class Go2RoughExtraObsHistotyEnvCfg(Go2RoughEnvCfg):
+  def __post_init__(self):
+      super().__post_init__()
+      self.observations.policy.history_length += 1
+
+@configclass
+class Go2RoughExtraObsHistotyEnvCfg_PLAY(Go2RoughEnvCfg_PLAY):
+  def __post_init__(self):
+      super().__post_init__()
+      self.observations.policy.history_length += 1
