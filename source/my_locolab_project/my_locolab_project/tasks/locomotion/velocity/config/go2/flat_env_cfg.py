@@ -27,14 +27,18 @@ from locolab.utils.terrains import TerrainImporterCfg
 ##
 from locolab.tasks.manager_based.locomotion.velocity.config.unitree_go2.mdp_cfg import (  # isort: skip
     ActionsCfg,
-    CommandsCfg,
-    EventCfg,
-    FlatRewardsCfg,
     PrivObsCfg,
     PropObsCfg,
     FlatTerminationsCfg,
     FLAT_CONTACT_SENSOR_LINK_NAMES,
 )
+from my_locolab_project.tasks.locomotion.velocity.config.go2.mdp_cfg import (
+    CommandsCfg,
+    FlatRewardsCfg,
+    EventCfg,
+    FlatCurriculumsCfg,
+)
+
 from locolab.assets.robots.unitree.Go2.go2 import UNITREE_GO2_CFG  # isort: skip
 from locolab.utils.terrains.terrains_cfg import FLAT_ROUGH_TERRAINS_CFG  # isort: skip
 
@@ -111,9 +115,14 @@ class Go2FlatEnvCfg(ManagerBasedRLEnvCfg):
     rewards: FlatRewardsCfg = FlatRewardsCfg()
     terminations: FlatTerminationsCfg = FlatTerminationsCfg()
     events: EventCfg = EventCfg()
+    curriculum: FlatCurriculumsCfg | None = FlatCurriculumsCfg()
 
     def __post_init__(self):
         """Post initialization."""
+        # Use the same force-shifted XY target for tracking rewards and command metrics.
+        tracking_params = self.rewards.track_lin_vel_xy_apply_force_exp.params
+        self.commands.base_velocity.metrics_force_event_name = tracking_params["force_event_name"]
+        self.commands.base_velocity.metrics_force_offset_gain = tracking_params["force_offset_gain"]
         # general settings
         self.decimation = 4
         self.episode_length_s = 20.0
@@ -123,8 +132,10 @@ class Go2FlatEnvCfg(ManagerBasedRLEnvCfg):
         self.sim.physics_material = self.scene.terrain.physics_material
         # physics settings
         set_locomotion_physics(
-            self.sim, rigid_patch_count=2**16,
-            num_substeps=1, cone="elliptic", impratio=5.0, njmax=128, nconmax=24
+            self.sim,
+            mjwarp=dict(cone="elliptic", impratio=5.0, njmax=128, nconmax=24),
+            steel=dict(margin=0.002, articulation_constraint_max=128, update_mass_matrix_interval=2),
+            physx=dict(rigid_patch_count=2**16),
         )
         # disable self collisions
         set_self_collisions(self.scene.robot.spawn, False)
@@ -151,4 +162,5 @@ class Go2FlatEnvCfg_PLAY(Go2FlatEnvCfg):
         self.scene.num_envs = 10
         self.scene.env_spacing = 2.5
         self.commands.base_velocity.debug_vis = True
-        self.events.push_robot_by_setting_velocity.params["debug_vis"] = True
+        # self.events.push_robot_by_setting_velocity.params["debug_vis"] = True
+        self.curriculum = None

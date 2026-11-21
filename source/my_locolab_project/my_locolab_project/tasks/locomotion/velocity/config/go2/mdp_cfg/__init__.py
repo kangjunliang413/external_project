@@ -27,7 +27,7 @@ JOINT_NAMES = [
 
 from .actions_cfg import ActionsCfg
 from .commands_cfg import CommandsCfg
-from .curriculumns_cfg import RoughCurriculumsCfg
+from .curriculumns_cfg import FlatCurriculumsCfg, RoughCurriculumsCfg
 from .events_cfg import EventCfg
 from .observations_cfg import PrivObsCfg, PropObsCfg
 from .rewards_cfg import FlatRewardsCfg, RoughRewardsCfg

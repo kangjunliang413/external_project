@@ -13,6 +13,7 @@ from isaaclab.managers import SceneEntityCfg
 from isaaclab.utils import configclass
 
 import locolab.tasks.manager_based.locomotion.velocity.mdp as mdp
+import my_locolab_project.tasks.locomotion.velocity.mdp as my_mdp
 
 from . import (
     FOOT_LINK_NAMES,
@@ -27,9 +28,20 @@ class FlatRewardsCfg:
     """Reward terms for flat terrain."""
 
     # ===== task-specific rewards =====
-    track_lin_vel_xy_exp = RewTerm(
-        func=mdp.track_lin_vel_xy_exp, weight=1.5, params={"command_name": "base_velocity", "std": math.sqrt(0.25)}
+    # track_lin_vel_xy_exp = RewTerm(
+    #     func=mdp.track_lin_vel_xy_exp, weight=1.5, params={"command_name": "base_velocity", "std": math.sqrt(0.25)}
+    # )
+    track_lin_vel_xy_apply_force_exp = RewTerm(
+        func=my_mdp.track_lin_vel_xy_apply_force_exp,
+        weight=1.65,
+        params={
+            "command_name": "base_velocity",
+            "std": math.sqrt(0.25),
+            "force_offset_gain": 0.008,  # m/s per N; 40-70 N produces a 0.32-0.56 m/s offset.
+            "force_event_name": "horizontal_force_pulse",
+        },
     )
+
     track_ang_vel_z_exp = RewTerm(
         func=mdp.track_ang_vel_z_exp, weight=1.0, params={"command_name": "base_velocity", "std": math.sqrt(0.25)}
     )

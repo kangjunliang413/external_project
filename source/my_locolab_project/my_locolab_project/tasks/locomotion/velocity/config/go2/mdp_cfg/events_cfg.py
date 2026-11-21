@@ -11,6 +11,7 @@ from isaaclab.managers import SceneEntityCfg
 from isaaclab.utils import configclass
 
 import locolab.tasks.manager_based.locomotion.velocity.mdp as mdp
+import my_locolab_project.tasks.locomotion.velocity.mdp as my_mdp
 
 from . import BASE_LINK_NAME, FOOT_LINK_NAMES, JOINT_NAMES, OTHER_BODY_LINK_NAMES
 
@@ -143,7 +144,7 @@ class EventCfg:
     #     },
     # )
     horizontal_force_pulse = EventTerm(
-        func=mdp.HorizontalForcePulse,
+        func=my_mdp.HorizontalForcePulse,
         mode="interval",
         # Go2FlatEnvCfg: dt=0.005, decimation=4，因此控制周期是 0.02 s。
         # 该 term 每个控制步运行一次，用于计时和清零。
