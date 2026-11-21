@@ -133,12 +133,30 @@ class EventCfg:
 
     # ===== interval ===== (1 events)
     # 1.
-    push_robot_by_setting_velocity = EventTerm(
-        func=mdp.push_by_setting_velocity,
+    # push_robot_by_setting_velocity = EventTerm(
+    #     func=mdp.push_by_setting_velocity,
+    #     mode="interval",
+    #     interval_range_s=(10.0, 15.0),
+    #     params={
+    #         "velocity_range": {"x": (-1.0, 1.0), "y": (-1.0, 1.0)},
+    #         "debug_vis_cfg": mdp.PushDebugVisCfg(),
+    #     },
+    # )
+    horizontal_force_pulse = EventTerm(
+        func=mdp.HorizontalForcePulse,
         mode="interval",
-        interval_range_s=(10.0, 15.0),
+        # Go2FlatEnvCfg: dt=0.005, decimation=4，因此控制周期是 0.02 s。
+        # 该 term 每个控制步运行一次，用于计时和清零。
+        interval_range_s=(0.02, 0.02),
         params={
-            "velocity_range": {"x": (-1.0, 1.0), "y": (-1.0, 1.0)},
-            "debug_vis_cfg": mdp.PushDebugVisCfg(),
+            "asset_cfg": SceneEntityCfg("robot", body_names=BASE_LINK_NAME),
+            # 水平随机方向，大小范围单位为 N；建议从较小值开始。
+            "force_magnitude_range": (40.0, 60.0),
+            # 每次施力时，为各环境独立采样持续时间（秒）；也支持固定数值。
+            "pulse_duration_s": (0.5, 1.5),
+            # 每次推力结束后，等待 5--10 秒再施加下一次。
+            "wait_range_s": (5, 10),
+            # False: x/y 相对机器人 base 坐标系；True: 相对世界坐标系。
+            "is_global": False,
         },
     )
